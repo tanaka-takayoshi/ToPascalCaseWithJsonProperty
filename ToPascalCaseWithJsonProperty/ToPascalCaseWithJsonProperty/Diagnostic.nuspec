@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
   <metadata>
     <id>Json.Net.Proprety.ToPascalCase</id>
-    <version>1.0.0.1-alpha</version>
+    <version>1.0.0.2-alpha</version>
     <title>Json.Net.Proprety.ToPascalCase</title>
     <authors>tanaka_733</authors>
     <owners>tanaka_733</owners>
