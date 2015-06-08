@@ -19,10 +19,6 @@ namespace ToPascalCaseWithJsonProperty
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(ToPascalCaseWithJsonPropertyCodeFixProvider)), Shared]
     public class ToPascalCaseWithJsonPropertyCodeFixProvider : CodeFixProvider
     {
-        private SyntaxToken whitespaceToken =
-        SyntaxFactory.Token(SyntaxTriviaList.Create(SyntaxFactory.Space), SyntaxKind.StringLiteralToken, SyntaxTriviaList.Empty);
-
-
         public sealed override ImmutableArray<string> FixableDiagnosticIds
         {
             get { return ImmutableArray.Create(ToPascalCaseWithJsonPropertyAnalyzer.DiagnosticId); }
@@ -42,7 +38,7 @@ namespace ToPascalCaseWithJsonProperty
             var diagnosticSpan = diagnostic.Location.SourceSpan;
 
             // Find the type declaration identified by the diagnostic.
-            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().First();
+            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<ClassDeclarationSyntax>().First();
 
             // Register a code action that will invoke the fix.
             context.RegisterCodeFix(
@@ -50,12 +46,12 @@ namespace ToPascalCaseWithJsonProperty
                 diagnostic);
         }
 
-        private async Task<Document> MakeUppercaseAsync(Document document, TypeDeclarationSyntax typeDecl, CancellationToken cancellationToken)
+        private async Task<Document> MakeUppercaseAsync(Document document, ClassDeclarationSyntax typeDecl, CancellationToken cancellationToken)
         {
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            var root = await document.GetSyntaxRootAsync(cancellationToken);
+            var root = (await document.GetSyntaxRootAsync(cancellationToken))
+                            .SyntaxTree.GetCompilationUnitRoot(cancellationToken);// GetCompilationUnitRoot(cancellationToken)
             var newRoot = root;
-            var names = typeDecl.ChildNodes()
+            var names = typeDecl.Members
                 .OfType<PropertyDeclarationSyntax>()
                 .Select(p => p.Identifier.Text);
 
@@ -64,9 +60,9 @@ namespace ToPascalCaseWithJsonProperty
                 //最新のドキュメントルートから変更対象のプロパティを名前から探す。
                 //ドキュメントルートは構築しなおされているので、SyntaxNodeの参照一致では見つけられない
                 var property = newRoot.DescendantNodes()
-                    .OfType<TypeDeclarationSyntax>()
+                    .OfType<ClassDeclarationSyntax>()
                     .First(t => t.Identifier.Text == typeDecl.Identifier.Text)
-                    .ChildNodes()
+                    .Members
                     .OfType<PropertyDeclarationSyntax>()
                     .First(p => p.Identifier.Text == name);
                 var previousName = property.Identifier.Text;
@@ -93,24 +89,14 @@ namespace ToPascalCaseWithJsonProperty
                 newRoot = newRoot.ReplaceNode(property, new[] { newProperty });
             }
 
-            if (newRoot.ChildNodes()
-                .OfType<UsingDirectiveSyntax>()
-                .All(u => (u.Name as QualifiedNameSyntax)?.ToFullString() != "Newtonsoft.Json"))
+            if (newRoot.SyntaxTree.GetCompilationUnitRoot(cancellationToken)
+                .Usings
+                .All(u => u.Name.ToFullString() != "Newtonsoft.Json"))
             {
-                var lastUsing = newRoot.DescendantNodes()
-                        .OfType<UsingDirectiveSyntax>()
-                        .LastOrDefault();
                 var insertingUsing = SyntaxFactory.UsingDirective(
                     SyntaxFactory.IdentifierName("Newtonsoft.Json"));
-                if (lastUsing == null)
-                {
-                    //TODO using が1つもない場合に挿入する方法がわからない
-                    //newRoot = newRoot.InsertNodesBefore(newRoot.ChildNodes().First(), new[] {insertingUsing});
-                }
-                else
-                {
-                    newRoot = newRoot.InsertNodesAfter(lastUsing, new[] { insertingUsing });
-                }
+                newRoot = newRoot.SyntaxTree.GetCompilationUnitRoot(cancellationToken)
+                            .AddUsings(insertingUsing);
             }
             return document.WithSyntaxRoot(newRoot);
         }
